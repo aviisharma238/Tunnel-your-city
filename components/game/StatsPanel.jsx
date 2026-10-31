@@ -26,7 +26,7 @@ export default function StatsPanel() {
       <div className={styles.row}>
         <span className={styles.label}>FPS</span>
         <span className={`${styles.value} ${fps < 30 ? styles.warn : fps >= 55 ? styles.good : ''}`}>
-          {fps}
+          {fps || 60}
         </span>
       </div>
       <div className={styles.row}>
@@ -39,11 +39,11 @@ export default function StatsPanel() {
       </div>
       <div className={styles.row}>
         <span className={styles.label}>Vehicles</span>
-        <span className={styles.value}>{vehicleCount}</span>
+        <span className={styles.value} style={{ color: '#38bdf8' }}>{vehicleCount}</span>
       </div>
       <div className={styles.row}>
         <span className={styles.label}>Phase</span>
-        <span className={styles.value} style={{ color: 'var(--color-accent)' }}>1 / 8</span>
+        <span className={styles.value} style={{ color: 'var(--color-accent)' }}>3 / 8 · Traffic</span>
       </div>
     </div>
   );

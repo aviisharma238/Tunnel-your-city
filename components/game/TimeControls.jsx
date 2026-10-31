@@ -1,6 +1,6 @@
 'use client';
 
-import { Pause, Play, FastForward, SkipForward, ArrowLeft } from 'lucide-react';
+import { Pause, Play, ArrowLeft, Car, RefreshCw } from 'lucide-react';
 import { useGameStore } from '@/stores/gameStore';
 import { gameEngine } from '@/engine/core/GameEngine';
 import Link from 'next/link';
@@ -31,6 +31,14 @@ export default function TimeControls() {
     if (isPaused) gameEngine.resume();
   };
 
+  const handleSpawnCars = () => {
+    gameEngine.vehicleManager?.spawnBatch(10);
+  };
+
+  const handleClearCars = () => {
+    gameEngine.vehicleManager?.clearAll();
+  };
+
   return (
     <div className={styles.bar}>
       {/* Back to menu */}
@@ -45,17 +53,37 @@ export default function TimeControls() {
         {isPaused ? <Play size={16} /> : <Pause size={16} />}
       </button>
 
-      {/* Speed */}
+      {/* Speed Multipliers */}
       {SPEEDS.map(s => (
         <button
           key={s.multiplier}
           className={`${styles.speedBtn} ${speed === s.multiplier && !isPaused ? styles.active : ''}`}
           onClick={() => handleSpeed(s.multiplier)}
-          title={`Speed ${s.label}`}
+          title={`Simulation Speed ${s.label}`}
         >
           {s.label}
         </button>
       ))}
+
+      <div className={styles.divider} />
+
+      {/* Quick Traffic Controls */}
+      <button
+        className={styles.spawnBtn}
+        onClick={handleSpawnCars}
+        title="Spawn 10 Cars"
+      >
+        <Car size={15} />
+        <span>+10</span>
+      </button>
+
+      <button
+        className={styles.iconBtn}
+        onClick={handleClearCars}
+        title="Clear Traffic"
+      >
+        <RefreshCw size={14} />
+      </button>
     </div>
   );
 }
