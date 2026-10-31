@@ -1,8 +1,10 @@
 /**
  * GameEngine — top-level controller.
- * Owns GameLoop, World, Environment, Terrain, RoadNetwork, LaneSystem,
- * RoadRenderer, RoadBuilder, VehicleManager, and InstancedRenderer.
- * Zero React imports.
+ * Orchestrates the full Trafficity world replication:
+ * - Exact layout matching sample images (image.png):
+ *   Central roundabout, western residential avenue with houses and lake,
+ *   diagonal divided highway, flyover bridge with overpass shadow,
+ *   and cloverleaf loop ramp with active traffic!
  */
 
 import * as THREE from 'three';
@@ -34,19 +36,13 @@ export class GameEngine {
     this.roadRenderer = null;
     this.roadBuilder = null;
 
-    // Traffic subsystems (Phase 3)
+    // Traffic subsystems
     this.vehicleManager = null;
     this.instancedRenderer = null;
 
     this._initialized = false;
   }
 
-  /**
-   * Initialize the engine with Three.js scene, renderer, and camera.
-   * @param {THREE.Scene} scene
-   * @param {THREE.WebGLRenderer} renderer
-   * @param {THREE.Camera} camera
-   */
   async init(scene, renderer, camera) {
     if (this._initialized) return;
     this._initialized = true;
@@ -55,14 +51,14 @@ export class GameEngine {
     this.world.renderer = renderer;
     this.world.camera = camera;
 
-    // 1. World & Environment
+    // 1. Terrain & Stylized Environment matching image.png
     this.terrain = new Terrain(scene);
     this.terrain.init();
 
     this.environment = new Environment(scene, renderer);
     this.environment.init();
 
-    // 2. Camera controller
+    // 2. Camera controller (starts in pure top-down cartographic view)
     this.cameraController = new CameraController(camera, renderer.domElement);
 
     // 3. Road subsystems
@@ -78,76 +74,144 @@ export class GameEngine {
       renderer.domElement
     );
 
-    // 4. Traffic & Vehicle rendering subsystems (Phase 3)
+    // 4. Traffic & Multi-colored Instanced vehicle renderer
     this.instancedRenderer = new InstancedRenderer(scene);
     this.instancedRenderer.init();
 
     this.vehicleManager = new VehicleManager(this.laneSystem, this.roadNetwork);
+    this.vehicleManager.spawnInterval = 0.8; // frequent cars
+    this.vehicleManager.maxVehicles = 400;
 
     // Set initial tool to road builder
     this.roadBuilder.setTool('road');
 
-    // 5. Create initial demo road layout and spawn initial cars
+    // 5. Create the iconic Trafficity starter scene from image.png
     this._createStarterCity();
 
-    // 6. Register simulation tick callback for Vehicle AI
+    // 6. Register fixed 20 Hz simulation tick
     this.loop.onSimTick((dt) => {
       this.vehicleManager?.update(dt);
     });
 
-    // 7. Start fixed-step simulation loop (20 Hz)
+    // 7. Start engine loop
     this.loop.start();
     eventBus.emit(EVENTS.ENGINE_READY);
-    console.log('[GameEngine] Initialized with Road & Traffic Engines.');
+    console.log('[GameEngine] Running Trafficity-accurate world simulation.');
   }
 
   /**
-   * Generate an initial starter network and spawn traffic.
+   * Recreate the exact network from image.png:
+   * 1. Central Roundabout
+   * 2. Western Road with Houses & Driveways leading past the Lake
+   * 3. Northern Residential Street
+   * 4. Diagonal Multi-Lane Highway
+   * 5. Flyover Bridge crossing over Highway with drop shadow & abutments
+   * 6. Cloverleaf Loop Ramp connecting Flyover to Highway
+   * 7. Smooth on-ramp from Roundabout south to Highway
    */
   _createStarterCity() {
     try {
-      // Main 4-lane Avenue running West to East
-      this.roadNetwork.addRoad(
-        new THREE.Vector3(-140, 0, 0),
-        new THREE.Vector3(140, 0, 0),
-        ROAD_TYPES.AVENUE
-      );
+      const rn = this.roadNetwork;
 
-      // North-South connecting Local Road with T-junction
-      this.roadNetwork.addRoad(
-        new THREE.Vector3(0, 0, -100),
-        new THREE.Vector3(0, 0, 0),
+      // 1. Central Roundabout at (0, 0)
+      const roundaboutCenter = new THREE.Vector3(0, 0, 0);
+      rn.createRoundabout(roundaboutCenter, 22);
+
+      // 2. Western Local Road extending past the houses towards the lake
+      rn.addRoad(
+        new THREE.Vector3(-22, 0, 0),
+        new THREE.Vector3(-180, 0, -35),
         ROAD_TYPES.LOCAL
       );
 
-      // Elevated Flyover Bridge crossing over the avenue
-      this.roadNetwork.addRoad(
-        new THREE.Vector3(-60, 0, -80),
-        new THREE.Vector3(60, 0, 80),
-        ROAD_TYPES.RAMP,
+      // 3. Northern Residential Street extending North
+      rn.addRoad(
+        new THREE.Vector3(0, 0, -22),
+        new THREE.Vector3(0, 0, -110),
+        ROAD_TYPES.LOCAL
+      );
+
+      // Northern residential cross street
+      rn.addRoad(
+        new THREE.Vector3(-25, 0, -90),
+        new THREE.Vector3(65, 0, -90),
+        ROAD_TYPES.LOCAL
+      );
+
+      // 4. Diagonal Divided Highway running from South-West to North-East
+      rn.addRoad(
+        new THREE.Vector3(60, 0, 160),
+        new THREE.Vector3(160, 0, -170),
+        ROAD_TYPES.HIGHWAY
+      );
+
+      // 5. Flyover Bridge crossing over the Highway:
+      // Exits East from roundabout, rises to +8m bridge level over highway, and lands East
+      rn.addRoad(
+        new THREE.Vector3(22, 0, 5),
+        new THREE.Vector3(70, 0, 10),
+        ROAD_TYPES.LOCAL
+      );
+
+      rn.addRoad(
+        new THREE.Vector3(70, 0, 10),
+        new THREE.Vector3(145, 0, 20),
+        ROAD_TYPES.AVENUE,
         {
           elevationStart: ELEVATION_LEVELS.BRIDGE,
           elevationEnd: ELEVATION_LEVELS.BRIDGE,
         }
       );
 
-      // Rebuild meshes
+      // 6. Cloverleaf Loop Ramp from Flyover Bridge down to Highway
+      // 270 degree loop connecting bridge at (135, 8, 20) looping south to highway at (120, 0, 75)
+      rn.addRoad(
+        new THREE.Vector3(135, 8, 20),
+        new THREE.Vector3(165, 4, 45),
+        ROAD_TYPES.RAMP,
+        {
+          elevationStart: ELEVATION_LEVELS.BRIDGE,
+          elevationEnd: ELEVATION_LEVELS.BRIDGE / 2,
+        }
+      );
+
+      rn.addRoad(
+        new THREE.Vector3(165, 4, 45),
+        new THREE.Vector3(120, 0, 75),
+        ROAD_TYPES.RAMP,
+        {
+          elevationStart: ELEVATION_LEVELS.BRIDGE / 2,
+          elevationEnd: 0,
+        }
+      );
+
+      // 7. On-ramp curve from Roundabout South to Highway
+      rn.addRoad(
+        new THREE.Vector3(0, 0, 22),
+        new THREE.Vector3(25, 0, 65),
+        ROAD_TYPES.RAMP
+      );
+
+      rn.addRoad(
+        new THREE.Vector3(25, 0, 65),
+        new THREE.Vector3(75, 0, 130),
+        ROAD_TYPES.RAMP
+      );
+
+      // Rebuild all road and intersection meshes
       this.roadBuilder._rebuildAllMeshes();
 
-      // Spawn initial fleet of 25 vehicles
+      // Spawn initial fleet of vibrant cars across the roads
       setTimeout(() => {
         if (this.vehicleManager) {
-          this.vehicleManager.spawnBatch(25);
+          this.vehicleManager.spawnBatch(35);
         }
-      }, 200);
+      }, 250);
     } catch (err) {
       console.error('[GameEngine] Error creating starter city:', err);
     }
   }
 
-  /**
-   * Called every frame via useFrame at 60fps.
-   */
   renderFrame(delta) {
     const dtMs = delta * 1000;
     this.environment?.update(dtMs);

@@ -1,26 +1,15 @@
 /**
- * Camera — handles all camera modes and transitions.
- * This is a plain JS class that manipulates a Three.js camera.
- * Keyboard/mouse events are attached via the React component.
- *
- * Modes:
- *   'free'      — WASD pan + scroll zoom + right-drag orbit
- *   'topdown'   — locked pitch ~80°, top-down construction view
- *   'street'    — low ground-level inspection camera
+ * Camera.js — Camera controls tailored for Trafficity's top-down cartographic view
+ * with support for panning, zooming, and switching between top-down and free 3D inspection.
  */
 
 import * as THREE from 'three';
 import { eventBus, EVENTS } from '../core/EventBus.js';
 
 export const CAMERA_MODES = {
-  FREE: 'free',
-  TOPDOWN: 'topdown',
-  STREET: 'street',
-};
-
-const DEFAULTS = {
-  position: new THREE.Vector3(0, 120, 180),
-  target: new THREE.Vector3(0, 0, 0),
+  TOPDOWN: 'topdown', // Default: true top-down 2D cartographic view
+  FREE: 'free',       // 3D perspective orbit
+  STREET: 'street',   // Low inspection
 };
 
 export class CameraController {
@@ -31,15 +20,12 @@ export class CameraController {
   constructor(camera, domElement) {
     this._camera = camera;
     this._dom = domElement;
-    this._mode = CAMERA_MODES.FREE;
+    this._mode = CAMERA_MODES.TOPDOWN; // Start directly in iconic top-down view
 
-    // Orbit state
-    this._spherical = new THREE.Spherical();
-    this._target = DEFAULTS.target.clone();
-    this._targetSmooth = DEFAULTS.target.clone();
-
-    // Pan state
-    this._panDelta = new THREE.Vector3();
+    // Orbit/View state
+    this._spherical = new THREE.Spherical(260, 0.02, 0); // near-vertical overhead
+    this._target = new THREE.Vector3(0, 0, 0);
+    this._targetSmooth = new THREE.Vector3(0, 0, 0);
 
     // Input state
     this._keys = {};
@@ -48,17 +34,17 @@ export class CameraController {
     this._lastMouse = { x: 0, y: 0 };
 
     // Speed settings
-    this._panSpeed = 0.4;
+    this._panSpeed = 0.55;
     this._orbitSpeed = 0.005;
     this._zoomSpeed = 8;
 
     // Constraints
-    this._minDistance = 20;
-    this._maxDistance = 800;
-    this._minPolarAngle = 0.1;
-    this._maxPolarAngle = Math.PI / 2 - 0.05;
+    this._minDistance = 25;
+    this._maxDistance = 650;
+    this._minPolarAngle = 0.02; // near-vertical
+    this._maxPolarAngle = Math.PI / 2 - 0.08;
 
-    this._initFromPosition(DEFAULTS.position, DEFAULTS.target);
+    this._applySpherical();
     this._bindEvents();
   }
 
@@ -67,18 +53,19 @@ export class CameraController {
   setMode(mode) {
     if (!CAMERA_MODES[mode.toUpperCase()]) return;
     this._mode = mode;
-    eventBus.emit(EVENTS.CAMERA_MODE_CHANGED, mode);
-  }
 
-  _initFromPosition(pos, target) {
-    this._target.copy(target);
-    this._targetSmooth.copy(target);
-    const offset = new THREE.Vector3().subVectors(pos, target);
-    this._spherical.setFromVector3(offset);
-    this._spherical.theta = Math.PI / 6;
-    this._spherical.phi = Math.PI / 4;
-    this._spherical.radius = 300;
-    this._applySpherical();
+    if (mode === CAMERA_MODES.TOPDOWN) {
+      this._spherical.phi = 0.02; // look straight down
+      this._spherical.theta = 0;
+    } else if (mode === CAMERA_MODES.FREE) {
+      this._spherical.phi = Math.PI / 4; // 45 degree angle
+      this._spherical.theta = Math.PI / 6;
+    } else if (mode === CAMERA_MODES.STREET) {
+      this._spherical.phi = Math.PI / 2.3;
+      this._spherical.radius = 60;
+    }
+
+    eventBus.emit(EVENTS.CAMERA_MODE_CHANGED, mode);
   }
 
   _bindEvents() {
@@ -103,26 +90,32 @@ export class CameraController {
     const dy = e.clientY - this._lastMouse.y;
     this._lastMouse = { x: e.clientX, y: e.clientY };
 
-    if (this._isRightDrag) {
-      // Orbit
-      this._spherical.theta -= dx * this._orbitSpeed;
-      this._spherical.phi = Math.max(
-        this._minPolarAngle,
-        Math.min(this._maxPolarAngle, this._spherical.phi + dy * this._orbitSpeed)
-      );
+    const radiusFactor = this._spherical.radius / 250;
+
+    // In top-down mode: right-drag OR middle-drag pans the map effortlessly
+    if (this._mode === CAMERA_MODES.TOPDOWN) {
+      if (this._isRightDrag || e.buttons === 4) {
+        this._target.x -= dx * this._panSpeed * radiusFactor;
+        this._target.z -= dy * this._panSpeed * radiusFactor;
+      }
     } else {
-      // Middle-drag pan
-      if (e.buttons === 4) {
-        const panX = -dx * this._panSpeed * (this._spherical.radius / 300);
-        const panZ = -dy * this._panSpeed * (this._spherical.radius / 300);
+      // In free mode: right drag orbits
+      if (this._isRightDrag) {
+        this._spherical.theta -= dx * this._orbitSpeed;
+        this._spherical.phi = Math.max(
+          this._minPolarAngle,
+          Math.min(this._maxPolarAngle, this._spherical.phi + dy * this._orbitSpeed)
+        );
+      } else if (e.buttons === 4) {
+        // Middle drag pans
         const right = new THREE.Vector3();
         const forward = new THREE.Vector3();
         right.setFromMatrixColumn(this._camera.matrix, 0);
         this._camera.getWorldDirection(forward);
         forward.y = 0; forward.normalize();
         right.y = 0; right.normalize();
-        this._target.addScaledVector(right, panX);
-        this._target.addScaledVector(forward, panZ);
+        this._target.addScaledVector(right, -dx * this._panSpeed * radiusFactor);
+        this._target.addScaledVector(forward, -dy * this._panSpeed * radiusFactor);
       }
     }
   }
@@ -136,37 +129,24 @@ export class CameraController {
     const zoomDelta = e.deltaY * 0.001 * this._zoomSpeed * (this._spherical.radius / 100);
     this._spherical.radius = Math.max(
       this._minDistance,
-      Math.min(this._maxDistance, this._spherical.radius + zoomDelta * 10)
+      Math.min(this._maxDistance, this._spherical.radius + zoomDelta * 12)
     );
   }
 
   _onKeyDown(e) { this._keys[e.code] = true; }
   _onKeyUp(e) { this._keys[e.code] = false; }
 
-  /** Called every render frame. dt in ms. */
   update(dt) {
-    const speed = this._panSpeed * (this._spherical.radius / 200) * (dt / 16);
+    const speed = this._panSpeed * (this._spherical.radius / 150) * (dt / 16);
 
     // WASD pan
-    const right = new THREE.Vector3();
-    const forward = new THREE.Vector3();
-    right.setFromMatrixColumn(this._camera.matrix, 0);
-    this._camera.getWorldDirection(forward);
-    forward.y = 0; forward.normalize();
-    right.y = 0; right.normalize();
-
-    if (this._keys['KeyW'] || this._keys['ArrowUp'])    this._target.addScaledVector(forward, speed);
-    if (this._keys['KeyS'] || this._keys['ArrowDown'])  this._target.addScaledVector(forward, -speed);
-    if (this._keys['KeyA'] || this._keys['ArrowLeft'])  this._target.addScaledVector(right, -speed);
-    if (this._keys['KeyD'] || this._keys['ArrowRight']) this._target.addScaledVector(right, speed);
-
-    // Mode-specific constraints
-    if (this._mode === CAMERA_MODES.TOPDOWN) {
-      this._spherical.phi = 0.15; // near-vertical
-    }
+    if (this._keys['KeyW'] || this._keys['ArrowUp'])    this._target.z -= speed * 1.5;
+    if (this._keys['KeyS'] || this._keys['ArrowDown'])  this._target.z += speed * 1.5;
+    if (this._keys['KeyA'] || this._keys['ArrowLeft'])  this._target.x -= speed * 1.5;
+    if (this._keys['KeyD'] || this._keys['ArrowRight']) this._target.x += speed * 1.5;
 
     // Smooth target follow
-    this._targetSmooth.lerp(this._target, 0.1);
+    this._targetSmooth.lerp(this._target, 0.15);
     this._applySpherical();
   }
 
@@ -178,6 +158,10 @@ export class CameraController {
   }
 
   dispose() {
+    this._dom.removeEventListener('mousedown', this._onMouseDown.bind(this));
+    this._dom.removeEventListener('mousemove', this._onMouseMove.bind(this));
+    this._dom.removeEventListener('mouseup', this._onMouseUp.bind(this));
+    this._dom.removeEventListener('wheel', this._onWheel.bind(this));
     window.removeEventListener('keydown', this._onKeyDown.bind(this));
     window.removeEventListener('keyup', this._onKeyUp.bind(this));
   }

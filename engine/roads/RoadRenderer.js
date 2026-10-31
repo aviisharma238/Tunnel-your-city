@@ -1,7 +1,7 @@
 /**
  * RoadRenderer.js — Visual representation of roads, bridges, intersections,
  * roundabouts, live previews, snap indicators, and control point handles in Three.js.
- * Captures the clean minimalist vector style from Trafficity.
+ * Captures the clean minimalist vector style from Trafficity (image.png).
  */
 
 import * as THREE from 'three';
@@ -14,7 +14,6 @@ export class RoadRenderer {
   constructor(scene) {
     this._scene = scene;
 
-    // Root containers for road layers
     this._roadGroup = new THREE.Group();
     this._roadGroup.name = 'road_network_group';
     this._scene.add(this._roadGroup);
@@ -31,40 +30,35 @@ export class RoadRenderer {
     this._handleGroup.name = 'road_handles_group';
     this._scene.add(this._handleGroup);
 
-    // Mesh caches: roadId -> { roadMesh, borderMesh, centerMesh, pillarMeshes: [] }
     this._roadMeshes = new Map();
     this._intersectionMeshes = new Map();
 
-    // Shared materials
     this._initMaterials();
-
-    // Snap cursor indicator
     this._createSnapIndicator();
 
-    // Control points visibility
     this.showControlPoints = true;
   }
 
   _initMaterials() {
-    // Road surface: clean light off-white (Trafficity look)
+    // Pure clean white road surface
     this.matSurface = new THREE.MeshLambertMaterial({
-      color: 0xfafafa,
+      color: 0xffffff,
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     });
 
-    // Dark vector border
+    // Dark vector border line (#1f2937)
     this.matBorder = new THREE.MeshBasicMaterial({
-      color: 0x334155,
+      color: 0x1e293b,
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
     });
 
-    // Yellow center line
+    // Warm amber yellow center line
     this.matCenterLine = new THREE.MeshBasicMaterial({
       color: 0xf59e0b,
       side: THREE.DoubleSide,
@@ -73,13 +67,19 @@ export class RoadRenderer {
       polygonOffsetUnits: -3,
     });
 
-    // White dashed lane markings
+    // Dashed white lane markings
     this.matLaneDivider = new THREE.MeshBasicMaterial({
       color: 0x94a3b8,
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
+    });
+
+    // Black abutment ticks for bridges
+    this.matAbutment = new THREE.MeshBasicMaterial({
+      color: 0x0f172a,
+      side: THREE.DoubleSide,
     });
 
     // Concrete bridge pillar
@@ -95,7 +95,6 @@ export class RoadRenderer {
       side: THREE.DoubleSide,
     });
 
-    // Preview border
     this.matPreviewBorder = new THREE.MeshBasicMaterial({
       color: 0x0284c7,
       transparent: true,
@@ -103,7 +102,7 @@ export class RoadRenderer {
       side: THREE.DoubleSide,
     });
 
-    // Demolish highlight material (glowing red)
+    // Demolish highlight material
     this.matDemolish = new THREE.MeshBasicMaterial({
       color: 0xef4444,
       side: THREE.DoubleSide,
@@ -114,12 +113,12 @@ export class RoadRenderer {
       color: 0x0f172a, // pitch dark
     });
     this.matControlPointRim = new THREE.MeshBasicMaterial({
-      color: 0xffffff, // white rim
+      color: 0xffffff, // crisp white rim
     });
 
     // Roundabout central island
     this.matIsland = new THREE.MeshLambertMaterial({
-      color: 0xd6d3cb, // neutral warm stone
+      color: 0xede8de, // warm ground match
     });
   }
 
@@ -138,21 +137,23 @@ export class RoadRenderer {
     this._scene.add(this._snapMesh);
   }
 
-  /**
-   * Render or update a committed road segment.
-   */
   updateRoad(road) {
     this.removeRoad(road.id);
 
-    const { roadGeo, borderGeo, centerLineGeo, isBridge, pillars } = generateRoadMeshes(
-      road.curve,
-      road.type
-    );
+    const {
+      roadGeo,
+      borderGeo,
+      centerLineGeo,
+      laneDividerGeo,
+      abutmentGeo,
+      isBridge,
+      pillars,
+    } = generateRoadMeshes(road.curve, road.type);
 
     const group = new THREE.Group();
     group.name = `road_${road.id}`;
 
-    // 1. Surface
+    // 1. Surface (pure white)
     const surfMesh = new THREE.Mesh(roadGeo, this.matSurface);
     surfMesh.receiveShadow = true;
     if (isBridge) surfMesh.castShadow = true;
@@ -169,10 +170,24 @@ export class RoadRenderer {
       group.add(centerMesh);
     }
 
-    // 4. Bridge pillars (if elevated)
+    // 4. Lane divider dashes
+    let dividerMesh = null;
+    if (laneDividerGeo) {
+      dividerMesh = new THREE.Mesh(laneDividerGeo, this.matLaneDivider);
+      group.add(dividerMesh);
+    }
+
+    // 5. Bridge abutment black tick marks
+    let abutMesh = null;
+    if (abutmentGeo) {
+      abutMesh = new THREE.Mesh(abutmentGeo, this.matAbutment);
+      group.add(abutMesh);
+    }
+
+    // 6. Bridge pillars
     const pillarMeshes = [];
     pillars.forEach(p => {
-      const pGeo = new THREE.CylinderGeometry(p.width * 0.4, p.width * 0.4, p.height, 12);
+      const pGeo = new THREE.CylinderGeometry(p.width * 0.35, p.width * 0.35, p.height, 12);
       const pMesh = new THREE.Mesh(pGeo, this.matPillar);
       pMesh.position.copy(p.position);
       pMesh.castShadow = true;
@@ -187,6 +202,8 @@ export class RoadRenderer {
       surfMesh,
       borderMesh,
       centerMesh,
+      dividerMesh,
+      abutMesh,
       pillarMeshes,
       road,
     });
@@ -194,9 +211,6 @@ export class RoadRenderer {
     this._updateControlPoints();
   }
 
-  /**
-   * Remove road meshes from scene.
-   */
   removeRoad(roadId) {
     const entry = this._roadMeshes.get(roadId);
     if (!entry) return;
@@ -205,15 +219,14 @@ export class RoadRenderer {
     entry.surfMesh.geometry.dispose();
     entry.borderMesh.geometry.dispose();
     if (entry.centerMesh) entry.centerMesh.geometry.dispose();
+    if (entry.dividerMesh) entry.dividerMesh.geometry.dispose();
+    if (entry.abutMesh) entry.abutMesh.geometry.dispose();
     entry.pillarMeshes.forEach(p => p.geometry.dispose());
 
     this._roadMeshes.delete(roadId);
     this._updateControlPoints();
   }
 
-  /**
-   * Render or update an intersection mesh.
-   */
   updateIntersection(intersection) {
     this.removeIntersection(intersection.id);
 
@@ -253,9 +266,6 @@ export class RoadRenderer {
     this._intersectionMeshes.delete(intersectionId);
   }
 
-  /**
-   * Render live preview curve while the player is drawing.
-   */
   setPreview(curve, roadType) {
     this.clearPreview();
     if (!curve) return;
@@ -281,9 +291,6 @@ export class RoadRenderer {
     }
   }
 
-  /**
-   * Show/hide snap cursor indicator at position.
-   */
   setSnapIndicator(position, visible = true, color = 0x38bdf8) {
     if (!this._snapMesh) return;
     this._snapMesh.visible = visible;
@@ -293,9 +300,6 @@ export class RoadRenderer {
     }
   }
 
-  /**
-   * Highlight road for demolish mode.
-   */
   setDemolishHighlight(roadId, highlight = true) {
     const entry = this._roadMeshes.get(roadId);
     if (!entry) return;
@@ -306,11 +310,7 @@ export class RoadRenderer {
     }
   }
 
-  /**
-   * Draw control point black dots (matching Trafficity screenshots).
-   */
   _updateControlPoints() {
-    // Clear old handles
     while (this._handleGroup.children.length > 0) {
       const child = this._handleGroup.children.pop();
       child.geometry?.dispose();
@@ -332,17 +332,21 @@ export class RoadRenderer {
         this._drawHandle(road.curve.p3, 0x0f172a, 1.3, this._handleGroup);
         drawnNodes.add(p3Key);
       }
+
+      // Draw tangent handles on curves as in image.png
+      if (road.curve.p1.distanceTo(road.curve.p0) > 4.0) {
+        this._drawHandle(road.curve.p1, 0x0f172a, 0.9, this._handleGroup);
+        this._drawHandle(road.curve.p2, 0x0f172a, 0.9, this._handleGroup);
+      }
     }
   }
 
   _drawHandle(position, color = 0x0f172a, radius = 1.0, parentGroup = this._previewGroup) {
-    // Outer white rim
     const rimGeo = new THREE.CircleGeometry(radius * 1.35, 16);
     const rimMesh = new THREE.Mesh(rimGeo, this.matControlPointRim);
     rimMesh.rotation.x = -Math.PI / 2;
     rimMesh.position.set(position.x, position.y + 0.2, position.z);
 
-    // Inner dark circle
     const dotGeo = new THREE.CircleGeometry(radius, 16);
     const dotMat = new THREE.MeshBasicMaterial({ color });
     const dotMesh = new THREE.Mesh(dotGeo, dotMat);
@@ -361,4 +365,3 @@ export class RoadRenderer {
     if (this._snapMesh) this._scene.remove(this._snapMesh);
   }
 }
-

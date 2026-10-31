@@ -236,3 +236,4 @@ export class VehicleManager {
     return this.activeVehicles.length;
   }
 }
+

@@ -64,10 +64,10 @@ export default function GameCanvas() {
       <Canvas
         className={styles.canvas}
         camera={{
-          fov: 60,
-          near: 0.5,
-          far: 3000,
-          position: [0, 120, 180],
+          fov: 48,
+          near: 1.0,
+          far: 3500,
+          position: [0, 260, 0.1],
         }}
         shadows
         gl={{

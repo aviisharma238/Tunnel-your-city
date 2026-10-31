@@ -1,7 +1,6 @@
 /**
- * Environment — ambient lighting, sun, sky, fog, day/night cycle.
- * Phase 1: static late-afternoon sun with shadows.
- * Phase 7+: full day/night cycle, weather.
+ * Environment.js — Ambient lighting, sun, sky, and soft shadows
+ * calibrated for Trafficity's clean, bright cartographic aesthetic (image.png).
  */
 
 import * as THREE from 'three';
@@ -22,7 +21,6 @@ export class Environment {
 
   init() {
     this._setupRenderer();
-    this._setupFog();
     this._setupSky();
     this._setupLights();
   }
@@ -31,53 +29,48 @@ export class Environment {
     this._renderer.shadowMap.enabled = true;
     this._renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this._renderer.toneMappingExposure = 1.0;
-    this._renderer.setClearColor(0x0a1520);
-  }
-
-  _setupFog() {
-    this._scene.fog = new THREE.FogExp2(0x1a2535, 0.0006);
+    this._renderer.toneMappingExposure = 1.05;
+    this._renderer.setClearColor(0xede8de);
   }
 
   _setupSky() {
-    this._scene.background = new THREE.Color(0x1a2535);
+    this._scene.background = new THREE.Color(0xede8de);
+    this._scene.fog = new THREE.FogExp2(0xede8de, 0.0003);
   }
 
   _setupLights() {
-    // Hemisphere light — sky/ground ambient
-    this._hemi = new THREE.HemisphereLight(0x87ceeb, 0x2d4a1e, 0.4);
+    // Hemisphere light — warm daylight from above, soft bounce from below
+    this._hemi = new THREE.HemisphereLight(0xffffff, 0xe5dfd3, 0.7);
     this._hemi.name = 'hemi_light';
     this._scene.add(this._hemi);
 
-    // Ambient fill
-    this._ambient = new THREE.AmbientLight(0xffffff, 0.2);
+    // Soft ambient fill
+    this._ambient = new THREE.AmbientLight(0xfffbf0, 0.35);
     this._scene.add(this._ambient);
 
-    // Directional sun
-    this._sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
-    this._sun.position.set(200, 400, 200);
+    // Directional sunlight positioned North-West so shadows fall South-East (matching image.png)
+    this._sun = new THREE.DirectionalLight(0xfffbf2, 1.4);
+    this._sun.position.set(-140, 340, -160);
     this._sun.castShadow = true;
 
-    // Shadow map config
+    // High quality shadow configuration
     const s = this._sun.shadow;
     s.mapSize.width = 2048;
     s.mapSize.height = 2048;
-    s.camera.near = 1;
-    s.camera.far = 1500;
-    s.camera.left = -400;
-    s.camera.right = 400;
-    s.camera.top = 400;
-    s.camera.bottom = -400;
-    s.bias = -0.0005;
+    s.camera.near = 10;
+    s.camera.far = 1000;
+    s.camera.left = -320;
+    s.camera.right = 320;
+    s.camera.top = 320;
+    s.camera.bottom = -320;
+    s.bias = -0.0004;
 
     this._sun.name = 'sun';
     this._scene.add(this._sun);
     this._scene.add(this._sun.target);
   }
 
-  /** Called every render frame. dt in ms. */
   update(dt) {
-    // Phase 7: animate day/night here
     this._time += dt;
   }
 

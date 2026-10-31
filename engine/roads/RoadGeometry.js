@@ -1,7 +1,7 @@
 /**
  * RoadGeometry.js — Bézier math, arc-length parameterization,
- * and 3D mesh generation for roads, borders, markings, bridges, and intersections.
- * Replicates the crisp, clean Trafficity aesthetic.
+ * and high-precision 3D mesh generation for roads, borders, markings, bridges,
+ * roundabouts, and intersections matching the Trafficity screenshots (image.png).
  */
 
 import * as THREE from 'three';
@@ -19,13 +19,11 @@ export class BezierCurve3D {
     this.p2 = p2.clone();
     this.p3 = p3.clone();
 
-    // Cache arc-length lookup table
     this._lut = [];
     this._length = 0;
     this._computeLUT(64);
   }
 
-  /** Evaluate position at parameter t [0..1] */
   getPoint(t) {
     const it = 1 - t;
     const it2 = it * it;
@@ -40,7 +38,6 @@ export class BezierCurve3D {
     );
   }
 
-  /** Evaluate first derivative / tangent at t */
   getTangent(t) {
     const it = 1 - t;
     const it2 = it * it;
@@ -58,14 +55,11 @@ export class BezierCurve3D {
     return tan.normalize();
   }
 
-  /** Evaluate horizontal normal in XZ plane at t */
   getNormal(t) {
     const tan = this.getTangent(t);
-    // 90 degrees counter-clockwise in XZ plane
     return new THREE.Vector3(-tan.z, 0, tan.x).normalize();
   }
 
-  /** Build arc-length lookup table */
   _computeLUT(divisions = 64) {
     this._lut = [0];
     let prev = this.getPoint(0);
@@ -85,22 +79,17 @@ export class BezierCurve3D {
     return this._length;
   }
 
-  /** Convert distance along curve (0..length) to parameter t */
   getTFromDistance(distance) {
     if (distance <= 0) return 0;
     if (distance >= this._length) return 1;
 
     const n = this._lut.length - 1;
-    // Binary search in LUT
     let low = 0;
     let high = n;
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
-      if (this._lut[mid] < distance) {
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
+      if (this._lut[mid] < distance) low = mid + 1;
+      else high = mid - 1;
     }
 
     const idx = Math.max(0, high);
@@ -111,29 +100,19 @@ export class BezierCurve3D {
     return (idx + factor) / n;
   }
 
-  /** Get point at specific metric distance along curve */
   getPointAtDistance(distance) {
-    const t = this.getTFromDistance(distance);
-    return this.getPoint(t);
+    return this.getPoint(this.getTFromDistance(distance));
   }
 
-  /** Get tangent at specific metric distance along curve */
   getTangentAtDistance(distance) {
-    const t = this.getTFromDistance(distance);
-    return this.getTangent(t);
+    return this.getTangent(this.getTFromDistance(distance));
   }
 
-  /** Get normal at specific metric distance along curve */
   getNormalAtDistance(distance) {
-    const t = this.getTFromDistance(distance);
-    return this.getNormal(t);
+    return this.getNormal(this.getTFromDistance(distance));
   }
 }
 
-/**
- * Generate automatic Bézier control points P1 and P2 given start P0, end P3,
- * and optional directional hints.
- */
 export function createBezierFromPoints(p0, p3, dir0 = null, dir3 = null, curvature = 0.5) {
   const dist = p0.distanceTo(p3);
   const handleLen = dist * curvature * 0.45;
@@ -143,7 +122,6 @@ export function createBezierFromPoints(p0, p3, dir0 = null, dir3 = null, curvatu
   if (dir0 && dir0.lengthSq() > 1e-4) {
     p1 = p0.clone().addScaledVector(dir0.clone().normalize(), handleLen);
   } else {
-    // Default straight direction towards p3
     const fwd = new THREE.Vector3().subVectors(p3, p0).normalize();
     p1 = p0.clone().addScaledVector(fwd, handleLen);
   }
@@ -159,40 +137,38 @@ export function createBezierFromPoints(p0, p3, dir0 = null, dir3 = null, curvatu
 }
 
 /**
- * Generate 3D geometry bundle for a road segment:
- * - Road surface mesh
- * - Dark outer border edges
- * - Lane markings (yellow center line, white dashed dividers)
- * - Bridge parapets & concrete pillars (if elevated)
+ * Generate 3D geometries for roads:
+ * - Pure white road ribbon (#ffffff)
+ * - Dark slate vector outline (#1f2937, 0.35m)
+ * - Thin amber yellow center line (#f59e0b)
+ * - Dashed white lane dividers
+ * - Bridge abutment black tick marks and drop shadow
  */
 export function generateRoadMeshes(curve, roadType, options = {}) {
   const length = curve.length;
-  const stepDist = 2.0; // sample every 2m
+  const stepDist = 1.8; // fine sampling for silky smooth curves
   const numSteps = Math.max(4, Math.ceil(length / stepDist));
   const totalWidth = roadType.totalWidth;
   const halfWidth = totalWidth / 2;
-  const borderWidth = roadType.borderWidth || 0.4;
+  const borderWidth = roadType.borderWidth || 0.35;
 
   const positions = [];
   const normals = [];
   const uvs = [];
   const indices = [];
 
-  // Left/Right border strip arrays
   const borderPos = [];
   const borderNorm = [];
   const borderIdx = [];
 
-  // Markings arrays
   const centerLinePos = [];
   const centerLineIdx = [];
+
   const laneDividerPos = [];
   const laneDividerIdx = [];
 
-  // Bridge deck side walls (parapets)
-  const parapetPos = [];
-  const parapetNorm = [];
-  const parapetIdx = [];
+  const abutmentPos = [];
+  const abutmentIdx = [];
 
   let isBridge = false;
 
@@ -204,37 +180,34 @@ export function generateRoadMeshes(curve, roadType, options = {}) {
 
     if (pt.y > 0.5) isBridge = true;
 
-    // Road surface vertices: left and right
     const leftPt = pt.clone().addScaledVector(n, halfWidth);
     const rightPt = pt.clone().addScaledVector(n, -halfWidth);
 
-    // Slight lift to avoid z-fighting with terrain
     const yOffset = 0.05;
     leftPt.y += yOffset;
     rightPt.y += yOffset;
 
-    // Main road surface
+    // Main surface
     positions.push(leftPt.x, leftPt.y, leftPt.z);
     positions.push(rightPt.x, rightPt.y, rightPt.z);
     normals.push(0, 1, 0, 0, 1, 0);
     uvs.push(0, dist, 1, dist);
 
-    // Border lines (Trafficity signature dark outer stroke)
+    // Dark vector border line
     const bOuterL = leftPt.clone().addScaledVector(n, borderWidth);
     const bOuterR = rightPt.clone().addScaledVector(n, -borderWidth);
     bOuterL.y += 0.01;
     bOuterR.y += 0.01;
 
-    const bBase = i * 4;
     borderPos.push(bOuterL.x, bOuterL.y, bOuterL.z);
     borderPos.push(leftPt.x, leftPt.y + 0.01, leftPt.z);
     borderPos.push(rightPt.x, rightPt.y + 0.01, rightPt.z);
     borderPos.push(bOuterR.x, bOuterR.y, bOuterR.z);
     borderNorm.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
 
-    // Yellow center line (for 2-way roads)
+    // Amber yellow center line
     if (roadType.hasCenterLine) {
-      const cWidth = roadType.lanesTotal === 6 ? 0.8 : 0.28;
+      const cWidth = roadType.lanesTotal === 6 ? 0.6 : 0.28;
       const cL = pt.clone().addScaledVector(n, cWidth / 2);
       const cR = pt.clone().addScaledVector(n, -cWidth / 2);
       cL.y += yOffset + 0.02;
@@ -242,56 +215,39 @@ export function generateRoadMeshes(curve, roadType, options = {}) {
       centerLinePos.push(cL.x, cL.y, cL.z, cR.x, cR.y, cR.z);
     }
 
-    // Lane dividers for multi-lane roads (Avenue / Highway)
+    // Dashed white lane dividers
     if (roadType.hasLaneDividers) {
-      const numDividersEachSide = roadType.lanesForward - 1;
-      const laneW = roadType.laneWidth;
-      for (let s = -1; s <= 1; s += 2) {
-        for (let l = 1; l <= numDividersEachSide; l++) {
-          const offset = s * (l * laneW);
-          const dCenter = pt.clone().addScaledVector(n, offset);
-          const dL = dCenter.clone().addScaledVector(n, 0.12);
-          const dR = dCenter.clone().addScaledVector(n, -0.12);
-          dL.y += yOffset + 0.02;
-          dR.y += yOffset + 0.02;
-          laneDividerPos.push(dL.x, dL.y, dL.z, dR.x, dR.y, dR.z);
+      const isDash = Math.floor(dist / 3.0) % 2 === 0;
+      if (isDash) {
+        const numDividersEachSide = roadType.lanesForward - 1;
+        const laneW = roadType.laneWidth;
+        for (let s = -1; s <= 1; s += 2) {
+          for (let l = 1; l <= numDividersEachSide; l++) {
+            const offset = s * (l * laneW);
+            const dCenter = pt.clone().addScaledVector(n, offset);
+            const dL = dCenter.clone().addScaledVector(n, 0.12);
+            const dR = dCenter.clone().addScaledVector(n, -0.12);
+            dL.y += yOffset + 0.02;
+            dR.y += yOffset + 0.02;
+            const baseIdx = laneDividerPos.length / 3;
+            laneDividerPos.push(dL.x, dL.y, dL.z, dR.x, dR.y, dR.z);
+          }
         }
       }
     }
 
-    // Bridge parapet walls (if elevated)
-    if (pt.y > 0.5) {
-      const wallHeight = 0.8;
-      const pTopL = leftPt.clone().addScaledVector(n, 0.2);
-      pTopL.y += wallHeight;
-      const pTopR = rightPt.clone().addScaledVector(n, -0.2);
-      pTopR.y += wallHeight;
-
-      const pBaseIdx = parapetPos.length / 3;
-      parapetPos.push(leftPt.x, leftPt.y - 0.4, leftPt.z);
-      parapetPos.push(pTopL.x, pTopL.y, pTopL.z);
-      parapetPos.push(rightPt.x, rightPt.y - 0.4, rightPt.z);
-      parapetPos.push(pTopR.x, pTopR.y, pTopR.z);
-      parapetNorm.push(-n.x, 0.2, -n.z, -n.x, 0.2, -n.z, n.x, 0.2, n.z, n.x, 0.2, n.z);
-    }
-
-    // Indices for road surface
     if (i < numSteps) {
       const base = i * 2;
       indices.push(base, base + 1, base + 2);
       indices.push(base + 1, base + 3, base + 2);
 
-      // Border indices
       const b0 = i * 4;
       const b1 = (i + 1) * 4;
-      // Left border strip
       borderIdx.push(b0, b0 + 1, b1);
       borderIdx.push(b0 + 1, b1 + 1, b1);
-      // Right border strip
       borderIdx.push(b0 + 2, b0 + 3, b1 + 2);
       borderIdx.push(b0 + 3, b1 + 3, b1 + 2);
 
-      // Centerline indices
       if (roadType.hasCenterLine) {
         const c0 = i * 2;
         centerLineIdx.push(c0, c0 + 1, c0 + 2);
@@ -300,7 +256,27 @@ export function generateRoadMeshes(curve, roadType, options = {}) {
     }
   }
 
-  // Build Three.js geometries
+  // Bridge abutment black tick marks (as in image.png)
+  if (isBridge) {
+    [0.05, 0.95].forEach(tVal => {
+      const pt = curve.getPoint(tVal);
+      const n = curve.getNormal(tVal);
+      const leftAbut = pt.clone().addScaledVector(n, halfWidth + borderWidth + 0.6);
+      const rightAbut = pt.clone().addScaledVector(n, -(halfWidth + borderWidth + 0.6));
+      leftAbut.y += 0.15;
+      rightAbut.y += 0.15;
+
+      const aIdx = abutmentPos.length / 3;
+      abutmentPos.push(
+        leftAbut.x, leftAbut.y, leftAbut.z,
+        leftAbut.x, leftAbut.y, leftAbut.z - 0.4,
+        rightAbut.x, rightAbut.y, rightAbut.z,
+        rightAbut.x, rightAbut.y, rightAbut.z - 0.4
+      );
+      abutmentIdx.push(aIdx, aIdx + 1, aIdx + 2, aIdx + 1, aIdx + 3, aIdx + 2);
+    });
+  }
+
   const roadGeo = new THREE.BufferGeometry();
   roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   roadGeo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
@@ -320,15 +296,29 @@ export function generateRoadMeshes(curve, roadType, options = {}) {
     centerLineGeo.computeVertexNormals();
   }
 
-  // Bridge pillars
+  let laneDividerGeo = null;
+  if (laneDividerPos.length > 0) {
+    laneDividerGeo = new THREE.BufferGeometry();
+    laneDividerGeo.setAttribute('position', new THREE.Float32BufferAttribute(laneDividerPos, 3));
+    laneDividerGeo.computeVertexNormals();
+  }
+
+  let abutmentGeo = null;
+  if (abutmentPos.length > 0) {
+    abutmentGeo = new THREE.BufferGeometry();
+    abutmentGeo.setAttribute('position', new THREE.Float32BufferAttribute(abutmentPos, 3));
+    abutmentGeo.setIndex(abutmentIdx);
+    abutmentGeo.computeVertexNormals();
+  }
+
   const pillars = [];
   if (isBridge) {
-    const pillarSpacing = roadType.bridgePillarSpacing || 30;
+    const pillarSpacing = roadType.bridgePillarSpacing || 28;
     const numPillars = Math.floor(length / pillarSpacing);
     for (let k = 1; k <= numPillars; k++) {
       const dist = (k / (numPillars + 1)) * length;
       const pt = curve.getPointAtDistance(dist);
-      if (pt.y > 2.0) {
+      if (pt.y > 1.5) {
         pillars.push({
           position: new THREE.Vector3(pt.x, pt.y / 2, pt.z),
           height: pt.y,
@@ -342,18 +332,15 @@ export function generateRoadMeshes(curve, roadType, options = {}) {
     roadGeo,
     borderGeo,
     centerLineGeo,
-    laneDividerGeo: null, // can be rendered or added via shader/geometry
+    laneDividerGeo,
+    abutmentGeo,
     isBridge,
     pillars,
   };
 }
 
-/**
- * Generate intersection junction polygon mesh where N roads meet.
- * Computes outer perimeter, fills internal polygon, and generates stop lines.
- */
-export function generateIntersectionGeometry(center, radius, connectedRoadAngles = [], roadWidths = []) {
-  const segments = 32;
+export function generateIntersectionGeometry(center, radius) {
+  const segments = 36;
   const positions = [center.x, center.y + 0.05, center.z];
   const normals = [0, 1, 0];
   const indices = [];
@@ -373,8 +360,7 @@ export function generateIntersectionGeometry(center, radius, connectedRoadAngles
     }
   }
 
-  // Border ring
-  const borderW = 0.4;
+  const borderW = 0.35;
   for (let i = 0; i <= segments; i++) {
     const angle = (i / segments) * Math.PI * 2;
     const rx0 = center.x + Math.cos(angle) * radius;
@@ -405,10 +391,6 @@ export function generateIntersectionGeometry(center, radius, connectedRoadAngles
   return { surfaceGeo, borderGeo };
 }
 
-/**
- * Generate a Roundabout geometry:
- * Outer circular road ring + central decorative island + yield line markers.
- */
 export function generateRoundaboutGeometry(center, outerRadius = 22, innerRadius = 13) {
   const segments = 48;
   const positions = [];
@@ -421,8 +403,11 @@ export function generateRoundaboutGeometry(center, outerRadius = 22, innerRadius
   const centerPositions = [center.x, center.y + 0.12, center.z];
   const centerIndices = [];
 
+  const yieldPos = [];
+  const yieldIndices = [];
+
   const y = center.y + 0.05;
-  const bW = 0.4;
+  const bW = 0.35;
 
   for (let i = 0; i <= segments; i++) {
     const angle = (i / segments) * Math.PI * 2;
@@ -438,10 +423,8 @@ export function generateRoundaboutGeometry(center, outerRadius = 22, innerRadius
     positions.push(ix, y, iz);
     normals.push(0, 1, 0, 0, 1, 0);
 
-    // Inner island center fan
     centerPositions.push(ix, y + 0.08, iz);
 
-    // Outer & inner border
     const bOutX = center.x + cos * (outerRadius + bW);
     const bOutZ = center.z + sin * (outerRadius + bW);
     const bInX = center.x + cos * (innerRadius - bW);
@@ -455,18 +438,34 @@ export function generateRoundaboutGeometry(center, outerRadius = 22, innerRadius
       indices.push(base, base + 1, base + 2);
       indices.push(base + 1, base + 3, base + 2);
 
-      // Center island indices
       centerIndices.push(0, i + 1, i + 2);
 
-      // Outer border indices
       const b0 = i * 4;
       borderIndices.push(b0, b0 + 1, b0 + 4);
       borderIndices.push(b0 + 1, b0 + 5, b0 + 4);
-      // Inner border indices
       borderIndices.push(b0 + 2, b0 + 3, b0 + 6);
       borderIndices.push(b0 + 3, b0 + 7, b0 + 6);
     }
   }
+
+  // Dotted yield lines across the 4 entry quadrants (matching image.png)
+  [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2].forEach(angle => {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const perpCos = -sin;
+    const perpSin = cos;
+
+    for (let d = -4; d <= 4; d += 1.8) {
+      const px = center.x + cos * outerRadius + perpCos * d;
+      const pz = center.z + sin * outerRadius + perpSin * d;
+      const yIdx = yieldPos.length / 3;
+      yieldPos.push(
+        px, y + 0.03, pz,
+        px + cos * 0.4, y + 0.03, pz + sin * 0.4
+      );
+      yieldIndices.push(yIdx, yIdx + 1);
+    }
+  });
 
   const ringGeo = new THREE.BufferGeometry();
   ringGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -485,4 +484,3 @@ export function generateRoundaboutGeometry(center, outerRadius = 22, innerRadius
 
   return { ringGeo, borderGeo, islandGeo };
 }
-
