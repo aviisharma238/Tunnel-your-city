@@ -145,6 +145,12 @@ export class RoadNetwork {
     let curve;
     if (options.curve) {
       curve = options.curve;
+    } else if (options.p1 && options.p2) {
+      curve = new BezierCurve3D(startNode.position, options.p1, options.p2, endNode.position);
+    } else if (options.bendPoint) {
+      const p1 = startNode.position.clone().addScaledVector(new THREE.Vector3().subVectors(options.bendPoint, startNode.position), 2 / 3);
+      const p2 = endNode.position.clone().addScaledVector(new THREE.Vector3().subVectors(options.bendPoint, endNode.position), 2 / 3);
+      curve = new BezierCurve3D(startNode.position, p1, p2, endNode.position);
     } else {
       const dir0 = options.dir0 || null;
       const dir3 = options.dir3 || null;

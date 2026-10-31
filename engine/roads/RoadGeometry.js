@@ -137,6 +137,16 @@ export function createBezierFromPoints(p0, p3, dir0 = null, dir3 = null, curvatu
 }
 
 /**
+ * Convert 3-point bend curve (Start P0, Bend PBend, End P3) into an exact,
+ * smooth cubic Bézier curve.
+ */
+export function createCurvedBezierWithBend(p0, pBend, p3) {
+  const p1 = p0.clone().addScaledVector(new THREE.Vector3().subVectors(pBend, p0), 2 / 3);
+  const p2 = p3.clone().addScaledVector(new THREE.Vector3().subVectors(pBend, p3), 2 / 3);
+  return new BezierCurve3D(p0, p1, p2, p3);
+}
+
+/**
  * Generate 3D geometries for roads:
  * - Pure white road ribbon (#ffffff)
  * - Dark slate vector outline (#1f2937, 0.35m)

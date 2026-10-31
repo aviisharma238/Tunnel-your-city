@@ -140,8 +140,29 @@ export class RoadBuilder {
         if (this.buildMode === BUILD_MODES.STRAIGHT) {
           curve = createBezierFromPoints(this.startPoint, targetPos, null, null, 0.0);
         } else {
-          // Smooth curved Bézier
-          curve = createBezierFromPoints(this.startPoint, targetPos, null, null, 0.5);
+          // Inherit tangent continuity from starting node/road for natural curved transitions
+          let dir0 = null;
+          if (this.startSnap?.node?.connectedRoadIds?.size > 0) {
+            const firstRoadId = Array.from(this.startSnap.node.connectedRoadIds)[0];
+            const road = this.roadNetwork.roads.get(firstRoadId);
+            if (road) {
+              const isStart = road.startNodeId === this.startSnap.node.id;
+              dir0 = isStart ? road.curve.getTangent(0).clone().negate() : road.curve.getTangent(1).clone();
+            }
+          }
+
+          // Inherit tangent continuity from target snap node if available
+          let dir3 = null;
+          if (snap?.node?.connectedRoadIds?.size > 0) {
+            const firstRoadId = Array.from(snap.node.connectedRoadIds)[0];
+            const road = this.roadNetwork.roads.get(firstRoadId);
+            if (road) {
+              const isStart = road.startNodeId === snap.node.id;
+              dir3 = isStart ? road.curve.getTangent(0).clone() : road.curve.getTangent(1).clone().negate();
+            }
+          }
+
+          curve = createBezierFromPoints(this.startPoint, targetPos, dir0, dir3, 0.65);
         }
         this.currentCurve = curve;
         this.roadRenderer.setPreview(curve, roadType);

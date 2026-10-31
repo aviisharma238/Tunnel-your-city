@@ -71,22 +71,6 @@ export default function GameToolbar() {
           </button>
         ))}
       </div>
-
-      {/* Divider */}
-      <div className={styles.divider} />
-
-      {/* View toggles */}
-      <div className={styles.group}>
-        <span className={styles.groupLabel}>View</span>
-        <button
-          className={`${styles.btn} ${showGrid ? styles.active : ''}`}
-          onClick={toggleGrid}
-          title="Toggle Grid [G]"
-        >
-          <span className={styles.btnLabel}>Grid</span>
-          <kbd className={styles.kbd}>G</kbd>
-        </button>
-      </div>
     </div>
   );
 }

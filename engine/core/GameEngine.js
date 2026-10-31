@@ -2,9 +2,9 @@
  * GameEngine — top-level controller.
  * Orchestrates the full Trafficity world replication:
  * - Exact layout matching sample images (image.png):
- *   Central roundabout, western residential avenue with houses and lake,
- *   diagonal divided highway, flyover bridge with overpass shadow,
- *   and cloverleaf loop ramp with active traffic!
+ *   Central roundabout, curved western residential avenue with houses and lake,
+ *   sweeping curved highway, flyover bridge with overpass shadow,
+ *   and 270° cloverleaf loop ramp with active traffic!
  */
 
 import * as THREE from 'three';
@@ -51,7 +51,7 @@ export class GameEngine {
     this.world.renderer = renderer;
     this.world.camera = camera;
 
-    // 1. Terrain & Stylized Environment matching image.png
+    // 1. Terrain & Stylized Environment matching image.png (grid removed)
     this.terrain = new Terrain(scene);
     this.terrain.init();
 
@@ -79,13 +79,13 @@ export class GameEngine {
     this.instancedRenderer.init();
 
     this.vehicleManager = new VehicleManager(this.laneSystem, this.roadNetwork);
-    this.vehicleManager.spawnInterval = 0.8; // frequent cars
+    this.vehicleManager.spawnInterval = 0.8;
     this.vehicleManager.maxVehicles = 400;
 
     // Set initial tool to road builder
     this.roadBuilder.setTool('road');
 
-    // 5. Create the iconic Trafficity starter scene from image.png
+    // 5. Create the iconic Trafficity starter scene with smooth curved roads
     this._createStarterCity();
 
     // 6. Register fixed 20 Hz simulation tick
@@ -100,13 +100,13 @@ export class GameEngine {
   }
 
   /**
-   * Recreate the exact network from image.png:
+   * Recreate the exact network from image.png with real sweeping curves:
    * 1. Central Roundabout
-   * 2. Western Road with Houses & Driveways leading past the Lake
-   * 3. Northern Residential Street
-   * 4. Diagonal Multi-Lane Highway
-   * 5. Flyover Bridge crossing over Highway with drop shadow & abutments
-   * 6. Cloverleaf Loop Ramp connecting Flyover to Highway
+   * 2. S-Curved Western Road curving around the mountain & lake
+   * 3. Curved Northern Residential Street
+   * 4. Sweeping Curved Divided Highway
+   * 5. Curved Flyover Bridge crossing over Highway with drop shadow
+   * 6. Smooth 270° Cloverleaf Loop Ramp
    * 7. Smooth on-ramp from Roundabout south to Highway
    */
   _createStarterCity() {
@@ -117,85 +117,123 @@ export class GameEngine {
       const roundaboutCenter = new THREE.Vector3(0, 0, 0);
       rn.createRoundabout(roundaboutCenter, 22);
 
-      // 2. Western Local Road extending past the houses towards the lake
+      // 2. S-Curved Western Road curving around mountain & past blue building to the lake
+      // Segment 1: from roundabout exit (-22, 0, 0) curving past blue building to (-95, 0, 10)
       rn.addRoad(
         new THREE.Vector3(-22, 0, 0),
-        new THREE.Vector3(-180, 0, -35),
-        ROAD_TYPES.LOCAL
+        new THREE.Vector3(-95, 0, 10),
+        ROAD_TYPES.LOCAL,
+        {
+          p1: new THREE.Vector3(-55, 0, 0),
+          p2: new THREE.Vector3(-75, 0, 10),
+        }
       );
 
-      // 3. Northern Residential Street extending North
+      // Segment 2: continuing past houses to the lake shore at (-195, 0, -45)
+      rn.addRoad(
+        new THREE.Vector3(-95, 0, 10),
+        new THREE.Vector3(-195, 0, -45),
+        ROAD_TYPES.LOCAL,
+        {
+          p1: new THREE.Vector3(-130, 0, 10),
+          p2: new THREE.Vector3(-165, 0, -30),
+        }
+      );
+
+      // 3. Curved Northern Residential Street extending North
       rn.addRoad(
         new THREE.Vector3(0, 0, -22),
-        new THREE.Vector3(0, 0, -110),
-        ROAD_TYPES.LOCAL
+        new THREE.Vector3(10, 0, -115),
+        ROAD_TYPES.LOCAL,
+        {
+          p1: new THREE.Vector3(0, 0, -55),
+          p2: new THREE.Vector3(8, 0, -85),
+        }
       );
 
-      // Northern residential cross street
+      // Northern cul-de-sac branch
       rn.addRoad(
-        new THREE.Vector3(-25, 0, -90),
-        new THREE.Vector3(65, 0, -90),
-        ROAD_TYPES.LOCAL
+        new THREE.Vector3(5, 0, -85),
+        new THREE.Vector3(65, 0, -85),
+        ROAD_TYPES.LOCAL,
+        {
+          p1: new THREE.Vector3(25, 0, -85),
+          p2: new THREE.Vector3(45, 0, -85),
+        }
       );
 
-      // 4. Diagonal Divided Highway running from South-West to North-East
+      // 4. Sweeping Curved Divided Highway running South to North
       rn.addRoad(
-        new THREE.Vector3(60, 0, 160),
-        new THREE.Vector3(160, 0, -170),
-        ROAD_TYPES.HIGHWAY
+        new THREE.Vector3(70, 0, 180),
+        new THREE.Vector3(170, 0, -180),
+        ROAD_TYPES.HIGHWAY,
+        {
+          p1: new THREE.Vector3(85, 0, 70),
+          p2: new THREE.Vector3(120, 0, -60),
+        }
       );
 
-      // 5. Flyover Bridge crossing over the Highway:
-      // Exits East from roundabout, rises to +8m bridge level over highway, and lands East
+      // 5. Curved Flyover Bridge crossing over the Highway:
+      // Exits East from roundabout, curves into bridge approach
       rn.addRoad(
-        new THREE.Vector3(22, 0, 5),
-        new THREE.Vector3(70, 0, 10),
-        ROAD_TYPES.LOCAL
+        new THREE.Vector3(22, 0, 0),
+        new THREE.Vector3(68, 0, -6),
+        ROAD_TYPES.LOCAL,
+        {
+          p1: new THREE.Vector3(38, 0, 0),
+          p2: new THREE.Vector3(52, 0, -6),
+        }
       );
 
+      // Elevated Flyover Avenue Bridge crossing over Highway at +8m
       rn.addRoad(
-        new THREE.Vector3(70, 0, 10),
-        new THREE.Vector3(145, 0, 20),
+        new THREE.Vector3(68, 0, -6),
+        new THREE.Vector3(150, 0, 24),
         ROAD_TYPES.AVENUE,
         {
+          p1: new THREE.Vector3(92, 8, 2),
+          p2: new THREE.Vector3(124, 8, 14),
           elevationStart: ELEVATION_LEVELS.BRIDGE,
           elevationEnd: ELEVATION_LEVELS.BRIDGE,
         }
       );
 
-      // 6. Cloverleaf Loop Ramp from Flyover Bridge down to Highway
-      // 270 degree loop connecting bridge at (135, 8, 20) looping south to highway at (120, 0, 75)
+      // 6. Smooth 270° Cloverleaf Loop Ramp from Flyover Bridge down to Highway
+      // Loop upper half
       rn.addRoad(
-        new THREE.Vector3(135, 8, 20),
-        new THREE.Vector3(165, 4, 45),
+        new THREE.Vector3(138, 8, 20),
+        new THREE.Vector3(175, 4, 50),
         ROAD_TYPES.RAMP,
         {
+          p1: new THREE.Vector3(165, 8, 22),
+          p2: new THREE.Vector3(182, 6, 35),
           elevationStart: ELEVATION_LEVELS.BRIDGE,
           elevationEnd: ELEVATION_LEVELS.BRIDGE / 2,
         }
       );
 
+      // Loop lower half merging to highway
       rn.addRoad(
-        new THREE.Vector3(165, 4, 45),
-        new THREE.Vector3(120, 0, 75),
+        new THREE.Vector3(175, 4, 50),
+        new THREE.Vector3(118, 0, 85),
         ROAD_TYPES.RAMP,
         {
+          p1: new THREE.Vector3(168, 2, 75),
+          p2: new THREE.Vector3(140, 0, 85),
           elevationStart: ELEVATION_LEVELS.BRIDGE / 2,
           elevationEnd: 0,
         }
       );
 
-      // 7. On-ramp curve from Roundabout South to Highway
+      // 7. Direct Curved On-Ramp from Roundabout South to Highway
       rn.addRoad(
-        new THREE.Vector3(0, 0, 22),
-        new THREE.Vector3(25, 0, 65),
-        ROAD_TYPES.RAMP
-      );
-
-      rn.addRoad(
-        new THREE.Vector3(25, 0, 65),
-        new THREE.Vector3(75, 0, 130),
-        ROAD_TYPES.RAMP
+        new THREE.Vector3(15, 0, 20),
+        new THREE.Vector3(80, 0, 130),
+        ROAD_TYPES.RAMP,
+        {
+          p1: new THREE.Vector3(20, 0, 60),
+          p2: new THREE.Vector3(55, 0, 105),
+        }
       );
 
       // Rebuild all road and intersection meshes

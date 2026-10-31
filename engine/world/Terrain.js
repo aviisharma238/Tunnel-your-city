@@ -1,8 +1,8 @@
 /**
  * Terrain.js — Recreates the exact minimalist, stylized cartographic world from
  * the Trafficity reference images (image.png):
- * - Clean off-white ground (#f3efe6)
- * - Top-left organic lake with sandy beach shore (#8faee6 / #f0dfb2)
+ * - Seamless clean off-white ground (#ede8de) without any grid lines
+ * - Top-left organic lake with sandy beach shore (#8faee6 / #efdfb5)
  * - Bottom-left contoured mountain with tiered charcoal shading (#596066 / #454c52 / #363b3f)
  * - Residential neighborhood grass zones with cute green-roof houses & white driveways
  * - Blue commercial buildings with parking lots
@@ -22,8 +22,6 @@ export class Terrain {
     this._group = new THREE.Group();
     this._group.name = 'terrain_features_group';
     this._scene.add(this._group);
-
-    this._grid = null;
   }
 
   init() {
@@ -32,7 +30,7 @@ export class Terrain {
     this._createContourHills();
     this._createNeighborhoods();
     this._createBuildings();
-    this._createGrid();
+    // Grid removed — clean seamless organic land surface matching Trafficity
   }
 
   _createBaseCanvas() {
@@ -113,7 +111,7 @@ export class Terrain {
       hillGroup.add(mesh);
     });
 
-    // Right-side mountain (as seen on the right border of image.png)
+    // Right-side mountain (as seen in image.png)
     const rightHill = new THREE.Group();
     rightHill.position.set(240, 0, 40);
     const rightTiers = [
@@ -136,7 +134,6 @@ export class Terrain {
   }
 
   _createNeighborhoods() {
-    // Soft pastel green grass zones for residential areas (matching image.png)
     const grassMat = new THREE.MeshLambertMaterial({ color: 0xd8e4bf });
 
     // North residential block
@@ -149,41 +146,37 @@ export class Terrain {
     // West residential road strip
     const westGrass = new THREE.Mesh(new THREE.PlaneGeometry(160, 40), grassMat);
     westGrass.rotation.x = -Math.PI / 2;
-    westGrass.rotation.z = -0.15; // aligned with road curve
+    westGrass.rotation.z = -0.15;
     westGrass.position.set(-110, 0.01, -45);
     westGrass.receiveShadow = true;
     this._group.add(westGrass);
   }
 
   _createBuildings() {
-    // Materials
-    const houseRoofMat = new THREE.MeshLambertMaterial({ color: 0x5cb352 }); // vivid green gable roof
-    const houseWallMat = new THREE.MeshLambertMaterial({ color: 0xffffff }); // white walls
-    const drivewayMat = new THREE.MeshBasicMaterial({ color: 0xffffff });   // white driveway pavement
-    const blueBuildingMat = new THREE.MeshLambertMaterial({ color: 0x2563eb }); // blue commercial roof
-    const indRoofMat = new THREE.MeshLambertMaterial({ color: 0x52585f });    // dark grey industrial roof
+    const houseRoofMat = new THREE.MeshLambertMaterial({ color: 0x5cb352 });
+    const houseWallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const drivewayMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const blueBuildingMat = new THREE.MeshLambertMaterial({ color: 0x2563eb });
+    const indRoofMat = new THREE.MeshLambertMaterial({ color: 0x52585f });
 
-    // 1. Houses along Western Road (as in image.png)
+    // 1. Houses along Western Road
     for (let i = 0; i < 7; i++) {
       const hGroup = new THREE.Group();
       const x = -50 - i * 18;
       const z = -25 - i * 3.5;
       hGroup.position.set(x, 0, z);
 
-      // White driveway connecting house to road
       const driveGeo = new THREE.PlaneGeometry(3.5, 9);
       const driveMesh = new THREE.Mesh(driveGeo, drivewayMat);
       driveMesh.rotation.x = -Math.PI / 2;
       driveMesh.position.set(0, 0.02, 4.5);
       hGroup.add(driveMesh);
 
-      // House walls
       const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 6), houseWallMat);
       wallMesh.position.y = 1.5;
       wallMesh.castShadow = true;
       hGroup.add(wallMesh);
 
-      // Green gable roof
       const roofMesh = new THREE.Mesh(new THREE.ConeGeometry(5.8, 2.5, 4), houseRoofMat);
       roofMesh.rotation.y = Math.PI / 4;
       roofMesh.position.y = 4.2;
@@ -216,23 +209,20 @@ export class Terrain {
       this._group.add(hGroup);
     });
 
-    // 3. Blue Commercial Building on Western Road (matching image.png)
+    // 3. Blue Commercial Building on Western Road
     const commGroup = new THREE.Group();
     commGroup.position.set(-85, 0, 10);
 
-    // Blue building
     const bMesh = new THREE.Mesh(new THREE.BoxGeometry(16, 5, 12), blueBuildingMat);
     bMesh.position.y = 2.5;
     bMesh.castShadow = true;
     commGroup.add(bMesh);
 
-    // Parking lot with white stall lines
     const lotMesh = new THREE.Mesh(new THREE.PlaneGeometry(18, 10), new THREE.MeshLambertMaterial({ color: 0xede8de }));
     lotMesh.rotation.x = -Math.PI / 2;
     lotMesh.position.set(0, 0.02, -10);
     commGroup.add(lotMesh);
 
-    // White parking bay stripes
     for (let s = -3; s <= 3; s++) {
       const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 7), drivewayMat);
       stripe.rotation.x = -Math.PI / 2;
@@ -242,7 +232,7 @@ export class Terrain {
 
     this._group.add(commGroup);
 
-    // 4. Industrial Building at bottom right (matching image.png)
+    // 4. Industrial Building at bottom right
     const indGroup = new THREE.Group();
     indGroup.position.set(130, 0, 130);
     const indMesh = new THREE.Mesh(new THREE.BoxGeometry(28, 7, 20), indRoofMat);
@@ -250,7 +240,6 @@ export class Terrain {
     indMesh.castShadow = true;
     indGroup.add(indMesh);
 
-    // Blue highlight section
     const indAccent = new THREE.Mesh(new THREE.BoxGeometry(28, 2, 4), blueBuildingMat);
     indAccent.position.set(0, 6, 8);
     indGroup.add(indAccent);
@@ -258,21 +247,12 @@ export class Terrain {
     this._group.add(indGroup);
   }
 
-  _createGrid() {
-    // Very subtle, minimalist guideline grid
-    this._grid = new THREE.GridHelper(MAP_SIZE, 120, 0xe2ded4, 0xeeeae2);
-    this._grid.position.y = 0.03;
-    this._grid.name = 'terrain_grid';
-    this._scene.add(this._grid);
-  }
-
   setGridVisible(visible) {
-    if (this._grid) this._grid.visible = visible;
+    // Grid removed intentionally
   }
 
   dispose() {
     this._scene.remove(this._group);
-    if (this._grid) this._scene.remove(this._grid);
     this._group.children.forEach(c => {
       c.geometry?.dispose();
       c.material?.dispose();
