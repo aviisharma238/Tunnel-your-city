@@ -200,3 +200,4 @@ export class BuildingManager {
     this.clear();
   }
 }
+
