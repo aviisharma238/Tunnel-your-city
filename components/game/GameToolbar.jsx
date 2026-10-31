@@ -1,21 +1,22 @@
 'use client';
 
-import { MousePointer2, Route, Building2, Paintbrush, Trash2, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MousePointer2, Route, Building2, Paintbrush, Trash2, Eye, Flame } from 'lucide-react';
 import { useGameStore } from '@/stores/gameStore';
 import { gameEngine } from '@/engine/core/GameEngine';
 import styles from './GameToolbar.module.css';
 
 const TOOLS = [
   { id: 'select',   icon: MousePointer2, label: 'Select',   shortcut: 'Q' },
-  { id: 'road',     icon: Route,        label: 'Road',     shortcut: 'R' },
+  { id: 'road',     icon: Route,         label: 'Road',     shortcut: 'R' },
+  { id: 'demolish', icon: Trash2,        label: 'Demolish', shortcut: 'X' },
   { id: 'zone',     icon: Paintbrush,    label: 'Zone',     shortcut: 'Z' },
   { id: 'building', icon: Building2,     label: 'Building', shortcut: 'B' },
-  { id: 'demolish', icon: Trash2,        label: 'Demolish', shortcut: 'X' },
 ];
 
 const CAMERA_MODES = [
-  { id: 'free',    label: 'Free',  shortcut: '1' },
-  { id: 'topdown', label: 'Top',   shortcut: '2' },
+  { id: 'topdown', label: 'Top',   shortcut: '1' },
+  { id: 'free',    label: 'Free',  shortcut: '2' },
   { id: 'street',  label: 'Street',shortcut: '3' },
 ];
 
@@ -24,14 +25,40 @@ export default function GameToolbar() {
   const setActiveTool = useGameStore(s => s.setActiveTool);
   const cameraMode = useGameStore(s => s.cameraMode);
   const setCameraMode = useGameStore(s => s.setCameraMode);
-  const toggleGrid = useGameStore(s => s.toggleGrid);
-  const showGrid = useGameStore(s => s.showGrid);
+
+  const [heatmapActive, setHeatmapActive] = useState(false);
+
+  const handleSelectTool = (toolId) => {
+    setActiveTool(toolId);
+    gameEngine.roadBuilder?.setTool(toolId);
+  };
 
   const handleCameraMode = (mode) => {
     setCameraMode(mode);
     gameEngine.cameraController?.setMode(mode);
-    gameEngine.terrain?.setGridVisible(mode !== 'street');
   };
+
+  const handleToggleHeatmap = () => {
+    const isVis = gameEngine.toggleHeatmap();
+    setHeatmapActive(isVis);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'q' || e.key === 'Q') handleSelectTool('select');
+      else if (e.key === 'r' || e.key === 'R') handleSelectTool('road');
+      else if (e.key === 'x' || e.key === 'X') handleSelectTool('demolish');
+      else if (e.key === 'h' || e.key === 'H') handleToggleHeatmap();
+      else if (e.key === '1') handleCameraMode('topdown');
+      else if (e.key === '2') handleCameraMode('free');
+      else if (e.key === '3') handleCameraMode('street');
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className={styles.toolbar}>
@@ -42,7 +69,7 @@ export default function GameToolbar() {
           <button
             key={tool.id}
             className={`${styles.btn} ${activeTool === tool.id ? styles.active : ''}`}
-            onClick={() => setActiveTool(tool.id)}
+            onClick={() => handleSelectTool(tool.id)}
             title={`${tool.label} [${tool.shortcut}]`}
           >
             <tool.icon size={18} />
@@ -52,7 +79,22 @@ export default function GameToolbar() {
         ))}
       </div>
 
-      {/* Divider */}
+      <div className={styles.divider} />
+
+      {/* Traffic & Heatmap Analysis (image copy 5.png) */}
+      <div className={styles.group}>
+        <span className={styles.groupLabel}>Analysis</span>
+        <button
+          className={`${styles.btn} ${heatmapActive ? styles.active : ''}`}
+          onClick={handleToggleHeatmap}
+          title="Toggle Congestion / Noise Heatmap [H]"
+        >
+          <Flame size={18} color={heatmapActive ? '#ef4444' : 'currentColor'} />
+          <span className={styles.btnLabel}>Heatmap</span>
+          <kbd className={styles.kbd}>H</kbd>
+        </button>
+      </div>
+
       <div className={styles.divider} />
 
       {/* Camera modes */}

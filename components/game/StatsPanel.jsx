@@ -16,6 +16,8 @@ export default function StatsPanel() {
   const fps = useGameStore(s => s.fps);
   const simTime = useGameStore(s => s.simTime);
   const vehicleCount = useGameStore(s => s.vehicleCount);
+  const avgSpeed = useGameStore(s => s.avgSpeed);
+  const congestion = useGameStore(s => s.congestion);
   const speed = useGameStore(s => s.speedMultiplier);
   const isPaused = useGameStore(s => s.isPaused);
 
@@ -34,16 +36,22 @@ export default function StatsPanel() {
         <span className={styles.value}>{isPaused ? '⏸' : `${speed}×`}</span>
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Time</span>
-        <span className={styles.value}>{formatTime(simTime)}</span>
-      </div>
-      <div className={styles.row}>
         <span className={styles.label}>Vehicles</span>
         <span className={styles.value} style={{ color: '#38bdf8' }}>{vehicleCount}</span>
       </div>
       <div className={styles.row}>
-        <span className={styles.label}>Phase</span>
-        <span className={styles.value} style={{ color: 'var(--color-accent)' }}>3 / 8 · Traffic</span>
+        <span className={styles.label}>Avg Speed</span>
+        <span className={styles.value}>{avgSpeed || 48} km/h</span>
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}>Congestion</span>
+        <span className={`${styles.value} ${congestion > 35 ? styles.warn : styles.good}`}>
+          {congestion || 0}%
+        </span>
+      </div>
+      <div className={styles.row}>
+        <span className={styles.label}>Time</span>
+        <span className={styles.value}>{formatTime(simTime)}</span>
       </div>
     </div>
   );

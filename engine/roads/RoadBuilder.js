@@ -1,11 +1,12 @@
 /**
  * RoadBuilder.js — Interactive player tool for drawing, curving, snapping,
- * and demolishing roads, bridges, and roundabouts in real-time.
+ * reshaping via control points, and demolishing roads, bridges, and roundabouts.
+ * Replicates the fluid spline manipulation from Trafficity.
  */
 
 import * as THREE from 'three';
 import { ROAD_TYPES, ELEVATION_LEVELS } from './RoadTypes.js';
-import { createBezierFromPoints } from './RoadGeometry.js';
+import { createBezierFromPoints, BezierCurve3D } from './RoadGeometry.js';
 import { eventBus, EVENTS } from '../core/EventBus.js';
 
 export const BUILD_MODES = {
@@ -46,10 +47,12 @@ export class RoadBuilder {
     this.hoverSnap = null;
     this.hoveredRoadId = null;
 
-    // Undo / Redo bound
+    // Handle dragging state (for dragging black control point dots)
+    this.hoveredHandle = null;  // { road, handleKey: 'p0'|'p1'|'p2'|'p3' }
+    this.isDraggingHandle = false;
+
     this._bindEvents();
 
-    // Listen to store/eventbus changes
     eventBus.on(EVENTS.ROAD_ADDED, (road) => {
       this.roadRenderer.updateRoad(road);
     });
@@ -64,7 +67,7 @@ export class RoadBuilder {
   setTool(tool) {
     this.cancelDrawing();
     this.activeTool = tool;
-    this.active = tool === 'road' || tool === 'demolish';
+    this.active = tool === 'road' || tool === 'demolish' || tool === 'select';
   }
 
   setRoadType(typeKey) {
@@ -80,8 +83,12 @@ export class RoadBuilder {
     this._groundPlane.constant = -elev;
   }
 
-  toggleElevation() {
-    const nextElev = this.currentElevation === 0 ? ELEVATION_LEVELS.BRIDGE : 0;
+  cycleElevation() {
+    let nextElev = 0;
+    if (this.currentElevation === 0) nextElev = ELEVATION_LEVELS.BRIDGE;
+    else if (this.currentElevation === ELEVATION_LEVELS.BRIDGE) nextElev = ELEVATION_LEVELS.HIGH_BRIDGE;
+    else nextElev = 0;
+
     this.setElevation(nextElev);
     return nextElev;
   }
@@ -89,11 +96,13 @@ export class RoadBuilder {
   _bindEvents() {
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerDown = this._onPointerDown.bind(this);
+    this._onPointerUp = this._onPointerUp.bind(this);
     this._onContextMenu = this._onContextMenu.bind(this);
     this._onKeyDown = this._onKeyDown.bind(this);
 
     this.domElement.addEventListener('pointermove', this._onPointerMove);
     this.domElement.addEventListener('pointerdown', this._onPointerDown);
+    this.domElement.addEventListener('pointerup', this._onPointerUp);
     this.domElement.addEventListener('contextmenu', this._onContextMenu);
     window.addEventListener('keydown', this._onKeyDown);
   }
@@ -110,18 +119,76 @@ export class RoadBuilder {
     return hit ? target : null;
   }
 
+  _findNearHandle(worldPos, radius = 5.0) {
+    for (const road of this.roadNetwork.roads.values()) {
+      const handles = [
+        { key: 'p0', pos: road.curve.p0 },
+        { key: 'p1', pos: road.curve.p1 },
+        { key: 'p2', pos: road.curve.p2 },
+        { key: 'p3', pos: road.curve.p3 },
+      ];
+
+      for (const h of handles) {
+        if (new THREE.Vector2(h.pos.x, h.pos.z).distanceTo(new THREE.Vector2(worldPos.x, worldPos.z)) < radius) {
+          return { road, handleKey: h.key, position: h.pos };
+        }
+      }
+    }
+    return null;
+  }
+
   _onPointerMove(e) {
     if (!this.active) return;
     const worldPos = this._getWorldRaycast(e);
     if (!worldPos) return;
+
+    // Handle interactive black dot dragging
+    if (this.isDraggingHandle && this.hoveredHandle) {
+      const { road, handleKey } = this.hoveredHandle;
+      const c = road.curve;
+
+      if (handleKey === 'p0') {
+        c.p0.x = worldPos.x; c.p0.z = worldPos.z;
+        const node = this.roadNetwork.nodes.get(road.startNodeId);
+        if (node) { node.position.x = worldPos.x; node.position.z = worldPos.z; }
+      } else if (handleKey === 'p1') {
+        c.p1.x = worldPos.x; c.p1.z = worldPos.z;
+      } else if (handleKey === 'p2') {
+        c.p2.x = worldPos.x; c.p2.z = worldPos.z;
+      } else if (handleKey === 'p3') {
+        c.p3.x = worldPos.x; c.p3.z = worldPos.z;
+        const node = this.roadNetwork.nodes.get(road.endNodeId);
+        if (node) { node.position.x = worldPos.x; node.position.z = worldPos.z; }
+      }
+
+      // Rebuild road with updated curve
+      road.curve = new BezierCurve3D(c.p0, c.p1, c.p2, c.p3);
+      road.length = road.curve.length;
+      this.roadRenderer.updateRoad(road);
+      if (this.roadNetwork.laneSystem) {
+        this.roadNetwork.laneSystem.generateLanesForRoad(road);
+      }
+      return;
+    }
 
     if (this.activeTool === 'demolish') {
       this._handleDemolishHover(worldPos);
       return;
     }
 
+    // Check if hovering over any black control point handle
+    const nearHandle = this._findNearHandle(worldPos, 4.5);
+    this.hoveredHandle = nearHandle;
+
+    if (nearHandle) {
+      this.domElement.style.cursor = 'grab';
+      this.roadRenderer.setSnapIndicator(nearHandle.position, true, 0x0f172a);
+      return;
+    } else {
+      this.domElement.style.cursor = 'default';
+    }
+
     if (this.activeTool === 'road') {
-      // Check snapping
       const snap = this.roadNetwork.findSnapTarget(worldPos, 10.0);
       this.hoverSnap = snap;
 
@@ -140,25 +207,25 @@ export class RoadBuilder {
         if (this.buildMode === BUILD_MODES.STRAIGHT) {
           curve = createBezierFromPoints(this.startPoint, targetPos, null, null, 0.0);
         } else {
-          // Inherit tangent continuity from starting node/road for natural curved transitions
+          // Tangent continuity from start node
           let dir0 = null;
           if (this.startSnap?.node?.connectedRoadIds?.size > 0) {
             const firstRoadId = Array.from(this.startSnap.node.connectedRoadIds)[0];
-            const road = this.roadNetwork.roads.get(firstRoadId);
-            if (road) {
-              const isStart = road.startNodeId === this.startSnap.node.id;
-              dir0 = isStart ? road.curve.getTangent(0).clone().negate() : road.curve.getTangent(1).clone();
+            const r = this.roadNetwork.roads.get(firstRoadId);
+            if (r) {
+              const isStart = r.startNodeId === this.startSnap.node.id;
+              dir0 = isStart ? r.curve.getTangent(0).clone().negate() : r.curve.getTangent(1).clone();
             }
           }
 
-          // Inherit tangent continuity from target snap node if available
+          // Tangent continuity from target snap node
           let dir3 = null;
           if (snap?.node?.connectedRoadIds?.size > 0) {
             const firstRoadId = Array.from(snap.node.connectedRoadIds)[0];
-            const road = this.roadNetwork.roads.get(firstRoadId);
-            if (road) {
-              const isStart = road.startNodeId === snap.node.id;
-              dir3 = isStart ? road.curve.getTangent(0).clone() : road.curve.getTangent(1).clone().negate();
+            const r = this.roadNetwork.roads.get(firstRoadId);
+            if (r) {
+              const isStart = r.startNodeId === snap.node.id;
+              dir3 = isStart ? r.curve.getTangent(0).clone() : r.curve.getTangent(1).clone().negate();
             }
           }
 
@@ -171,9 +238,16 @@ export class RoadBuilder {
   }
 
   _onPointerDown(e) {
-    if (!this.active || e.button !== 0) return; // Left click only
+    if (!this.active || e.button !== 0) return;
     const worldPos = this._getWorldRaycast(e);
     if (!worldPos) return;
+
+    // Check if clicking on a control point handle to drag it
+    if (this.hoveredHandle && !this.isDrawing) {
+      this.isDraggingHandle = true;
+      this.domElement.style.cursor = 'grabbing';
+      return;
+    }
 
     if (this.activeTool === 'demolish') {
       this._handleDemolishClick(worldPos);
@@ -183,7 +257,6 @@ export class RoadBuilder {
     if (this.activeTool === 'road') {
       const roadType = ROAD_TYPES[this.roadTypeKey] || ROAD_TYPES.LOCAL;
 
-      // Handle Roundabout placement tool
       if (this.buildMode === BUILD_MODES.ROUNDABOUT) {
         this.roadNetwork.createRoundabout(worldPos, 22);
         this._rebuildAllMeshes();
@@ -197,18 +270,12 @@ export class RoadBuilder {
       }
 
       if (!this.isDrawing) {
-        // First click: start drawing road
         this.isDrawing = true;
         this.startPoint = clickPos;
         this.startSnap = snap;
       } else {
-        // Second click: finalize road
-        if (this.startPoint.distanceTo(clickPos) < 5.0) {
-          // Too short
-          return;
-        }
+        if (this.startPoint.distanceTo(clickPos) < 5.0) return;
 
-        // If end point snapped to a road curve (split it into T-intersection)
         let endNode = null;
         if (snap && snap.type === 'road') {
           const splitResult = this.roadNetwork.splitRoad(snap.road.id, snap.point, snap.t);
@@ -218,7 +285,6 @@ export class RoadBuilder {
           }
         }
 
-        // If start point snapped to a road curve
         let startNode = null;
         if (this.startSnap && this.startSnap.type === 'road') {
           const splitResult = this.roadNetwork.splitRoad(this.startSnap.road.id, this.startSnap.point, this.startSnap.t);
@@ -228,7 +294,6 @@ export class RoadBuilder {
           }
         }
 
-        // Add the road to logical network
         const newRoad = this.roadNetwork.addRoad(this.startPoint, clickPos, this.roadTypeKey, {
           curve: this.currentCurve,
           elevationStart: this.startPoint.y,
@@ -241,7 +306,6 @@ export class RoadBuilder {
           this._rebuildAllMeshes();
         }
 
-        // If Shift is held down, continue chaining from clickPos
         if (e.shiftKey) {
           this.startPoint = clickPos;
           this.startSnap = this.roadNetwork.findSnapTarget(clickPos, 4.0);
@@ -249,6 +313,15 @@ export class RoadBuilder {
           this.cancelDrawing();
         }
       }
+    }
+  }
+
+  _onPointerUp(e) {
+    if (this.isDraggingHandle) {
+      this.isDraggingHandle = false;
+      this.domElement.style.cursor = 'default';
+      this._rebuildAllMeshes();
+      eventBus.emit(EVENTS.ROAD_UPDATED);
     }
   }
 
@@ -282,8 +355,7 @@ export class RoadBuilder {
     if (e.code === 'Escape') {
       this.cancelDrawing();
     } else if (e.code === 'KeyE') {
-      // Toggle elevation between Ground and Bridge
-      const elev = this.toggleElevation();
+      const elev = this.cycleElevation();
       eventBus.emit('ui:elevationChanged', elev);
     } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
       if (e.shiftKey) {
@@ -299,6 +371,7 @@ export class RoadBuilder {
     this.startPoint = null;
     this.startSnap = null;
     this.currentCurve = null;
+    this.isDraggingHandle = false;
     this.roadRenderer.clearPreview();
     this.roadRenderer.setSnapIndicator(null, false);
     if (this.hoveredRoadId) {
@@ -308,7 +381,6 @@ export class RoadBuilder {
   }
 
   _rebuildAllMeshes() {
-    // Clear and redraw all roads and intersections
     this.roadNetwork.roads.forEach(road => {
       this.roadRenderer.updateRoad(road);
     });
@@ -320,8 +392,8 @@ export class RoadBuilder {
   dispose() {
     this.domElement.removeEventListener('pointermove', this._onPointerMove);
     this.domElement.removeEventListener('pointerdown', this._onPointerDown);
+    this.domElement.removeEventListener('pointerup', this._onPointerUp);
     this.domElement.removeEventListener('contextmenu', this._onContextMenu);
     window.removeEventListener('keydown', this._onKeyDown);
   }
 }
-

@@ -1,10 +1,11 @@
 /**
  * GameEngine — top-level controller.
- * Orchestrates the full Trafficity world replication:
- * - Exact layout matching sample images (image.png):
- *   Central roundabout, curved western residential avenue with houses and lake,
- *   sweeping curved highway, flyover bridge with overpass shadow,
- *   and 270° cloverleaf loop ramp with active traffic!
+ * Orchestrates all subsystems to replicate the exact Trafficity gameplay and visual identity:
+ * - Real curved roads, multi-tier bridges with drop shadows, and roundabouts
+ * - Microscopic IDM traffic simulation with colorful vehicles
+ * - BuildingManager with dynamic house satisfaction roof colors (image copy 5.png)
+ * - Congestion & Noise Heatmap overlay (image copy 5.png)
+ * - Seamless grid-less stone canvas
  */
 
 import * as THREE from 'three';
@@ -21,6 +22,8 @@ import { RoadBuilder } from '../roads/RoadBuilder.js';
 import { ROAD_TYPES, ELEVATION_LEVELS } from '../roads/RoadTypes.js';
 import { VehicleManager } from '../traffic/VehicleManager.js';
 import { InstancedRenderer } from '../rendering/InstancedRenderer.js';
+import { BuildingManager } from '../city/BuildingManager.js';
+import { CongestionHeatmap } from '../traffic/CongestionHeatmap.js';
 
 export class GameEngine {
   constructor() {
@@ -39,6 +42,10 @@ export class GameEngine {
     // Traffic subsystems
     this.vehicleManager = null;
     this.instancedRenderer = null;
+    this.heatmap = null;
+
+    // City & Buildings subsystem
+    this.buildingManager = null;
 
     this._initialized = false;
   }
@@ -51,7 +58,7 @@ export class GameEngine {
     this.world.renderer = renderer;
     this.world.camera = camera;
 
-    // 1. Terrain & Stylized Environment matching image.png (grid removed)
+    // 1. Terrain & Environment (grid-free organic canvas)
     this.terrain = new Terrain(scene);
     this.terrain.init();
 
@@ -82,32 +89,37 @@ export class GameEngine {
     this.vehicleManager.spawnInterval = 0.8;
     this.vehicleManager.maxVehicles = 400;
 
+    // 5. City Buildings & Congestion Heatmap
+    this.buildingManager = new BuildingManager(scene, this.roadNetwork);
+    this.heatmap = new CongestionHeatmap(scene, this.roadNetwork, this.vehicleManager);
+
     // Set initial tool to road builder
     this.roadBuilder.setTool('road');
 
-    // 5. Create the iconic Trafficity starter scene with smooth curved roads
+    // 6. Create the iconic Trafficity starter scene
     this._createStarterCity();
 
-    // 6. Register fixed 20 Hz simulation tick
+    // 7. Register fixed 20 Hz simulation tick
+    let heatTimer = 0;
     this.loop.onSimTick((dt) => {
       this.vehicleManager?.update(dt);
+      this.buildingManager?.updateSatisfaction(this.vehicleManager);
+
+      heatTimer += dt;
+      if (heatTimer >= 0.5) {
+        heatTimer = 0;
+        if (this.heatmap?.visible) this.heatmap.update();
+      }
     });
 
-    // 7. Start engine loop
+    // 8. Start engine loop
     this.loop.start();
     eventBus.emit(EVENTS.ENGINE_READY);
     console.log('[GameEngine] Running Trafficity-accurate world simulation.');
   }
 
   /**
-   * Recreate the exact network from image.png with real sweeping curves:
-   * 1. Central Roundabout
-   * 2. S-Curved Western Road curving around the mountain & lake
-   * 3. Curved Northern Residential Street
-   * 4. Sweeping Curved Divided Highway
-   * 5. Curved Flyover Bridge crossing over Highway with drop shadow
-   * 6. Smooth 270° Cloverleaf Loop Ramp
-   * 7. Smooth on-ramp from Roundabout south to Highway
+   * Recreate the exact network from image.png with real sweeping curves and buildings:
    */
   _createStarterCity() {
     try {
@@ -118,7 +130,6 @@ export class GameEngine {
       rn.createRoundabout(roundaboutCenter, 22);
 
       // 2. S-Curved Western Road curving around mountain & past blue building to the lake
-      // Segment 1: from roundabout exit (-22, 0, 0) curving past blue building to (-95, 0, 10)
       rn.addRoad(
         new THREE.Vector3(-22, 0, 0),
         new THREE.Vector3(-95, 0, 10),
@@ -129,7 +140,6 @@ export class GameEngine {
         }
       );
 
-      // Segment 2: continuing past houses to the lake shore at (-195, 0, -45)
       rn.addRoad(
         new THREE.Vector3(-95, 0, 10),
         new THREE.Vector3(-195, 0, -45),
@@ -140,7 +150,7 @@ export class GameEngine {
         }
       );
 
-      // 3. Curved Northern Residential Street extending North
+      // 3. Curved Northern Residential Street
       rn.addRoad(
         new THREE.Vector3(0, 0, -22),
         new THREE.Vector3(10, 0, -115),
@@ -151,7 +161,6 @@ export class GameEngine {
         }
       );
 
-      // Northern cul-de-sac branch
       rn.addRoad(
         new THREE.Vector3(5, 0, -85),
         new THREE.Vector3(65, 0, -85),
@@ -162,7 +171,7 @@ export class GameEngine {
         }
       );
 
-      // 4. Sweeping Curved Divided Highway running South to North
+      // 4. Sweeping Curved Divided Highway
       rn.addRoad(
         new THREE.Vector3(70, 0, 180),
         new THREE.Vector3(170, 0, -180),
@@ -174,7 +183,6 @@ export class GameEngine {
       );
 
       // 5. Curved Flyover Bridge crossing over the Highway:
-      // Exits East from roundabout, curves into bridge approach
       rn.addRoad(
         new THREE.Vector3(22, 0, 0),
         new THREE.Vector3(68, 0, -6),
@@ -185,7 +193,6 @@ export class GameEngine {
         }
       );
 
-      // Elevated Flyover Avenue Bridge crossing over Highway at +8m
       rn.addRoad(
         new THREE.Vector3(68, 0, -6),
         new THREE.Vector3(150, 0, 24),
@@ -199,7 +206,6 @@ export class GameEngine {
       );
 
       // 6. Smooth 270° Cloverleaf Loop Ramp from Flyover Bridge down to Highway
-      // Loop upper half
       rn.addRoad(
         new THREE.Vector3(138, 8, 20),
         new THREE.Vector3(175, 4, 50),
@@ -212,7 +218,6 @@ export class GameEngine {
         }
       );
 
-      // Loop lower half merging to highway
       rn.addRoad(
         new THREE.Vector3(175, 4, 50),
         new THREE.Vector3(118, 0, 85),
@@ -236,7 +241,30 @@ export class GameEngine {
         }
       );
 
-      // Rebuild all road and intersection meshes
+      // 8. Place dynamic houses along roads with driveways (Trafficity style)
+      if (this.buildingManager) {
+        // Houses along western curved road
+        for (let i = 0; i < 7; i++) {
+          const x = -50 - i * 18;
+          const z = -25 - i * 3.5;
+          this.buildingManager.addHouse(x, z, -0.15);
+        }
+
+        // Houses in northern residential block
+        const northPositions = [
+          { x: 30, z: -70 }, { x: 50, z: -70 }, { x: 70, z: -70 },
+          { x: 30, z: -100 }, { x: 50, z: -100 }, { x: 70, z: -100 },
+        ];
+        northPositions.forEach(p => this.buildingManager.addHouse(p.x, p.z, 0));
+
+        // Commercial store with parking lot
+        this.buildingManager.addCommercial(-85, 12, 0);
+
+        // Industrial factory
+        this.buildingManager.addIndustrial(135, 135, -Math.PI / 4);
+      }
+
+      // Rebuild meshes
       this.roadBuilder._rebuildAllMeshes();
 
       // Spawn initial fleet of vibrant cars across the roads
@@ -248,6 +276,13 @@ export class GameEngine {
     } catch (err) {
       console.error('[GameEngine] Error creating starter city:', err);
     }
+  }
+
+  toggleHeatmap() {
+    if (!this.heatmap) return false;
+    const isVis = this.heatmap.toggle();
+    if (isVis) this.heatmap.update();
+    return isVis;
   }
 
   renderFrame(delta) {
@@ -275,6 +310,8 @@ export class GameEngine {
     this.roadRenderer?.dispose();
     this.instancedRenderer?.dispose();
     this.vehicleManager?.clearAll();
+    this.buildingManager?.dispose();
+    this.heatmap?.dispose();
     this.terrain?.dispose();
     this.environment?.dispose();
     eventBus.clear();

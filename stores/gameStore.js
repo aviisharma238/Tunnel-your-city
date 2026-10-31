@@ -28,10 +28,14 @@ export const useGameStore = create((set, get) => ({
   fps: 0,
   simTime: 0,
   vehicleCount: 0,
-  setStats: ({ fps, simTime, vehicleCount }) => set(s => ({
-    fps: fps ?? s.fps,
-    simTime: simTime ?? s.simTime,
-    vehicleCount: vehicleCount ?? s.vehicleCount,
+  avgSpeed: 0,
+  congestion: 0,
+  setStats: (data) => set(s => ({
+    fps: data.fps ?? s.fps,
+    simTime: data.simTime ?? s.simTime,
+    vehicleCount: data.vehicleCount ?? s.vehicleCount,
+    avgSpeed: data.avgSpeed ?? s.avgSpeed,
+    congestion: data.congestion ?? s.congestion,
   })),
 
   // ── HUD visibility ────────────────────────────────────────
