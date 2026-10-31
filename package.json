@@ -1,0 +1,27 @@
+{
+  "name": "game-city",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.176.0",
+    "@react-three/fiber": "^9.1.2",
+    "@react-three/drei": "^10.3.7",
+    "@react-three/rapier": "^2.1.0",
+    "zustand": "^5.0.5",
+    "lucide-react": "^0.511.0",
+    "framer-motion": "^12.15.0"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "eslint-config-next": "^15.3.3"
+  }
+}

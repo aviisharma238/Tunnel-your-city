@@ -1,0 +1,80 @@
+.toolbar {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(10, 14, 26, 0.85);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 10px 8px;
+  backdrop-filter: var(--hud-blur);
+  min-width: 120px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupLabel {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: 2px 8px;
+  margin-top: 4px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 6px 0;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+  position: relative;
+}
+
+.btn:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: var(--color-text);
+}
+
+.btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+
+.btnLabel {
+  flex: 1;
+}
+
+.kbd {
+  font-family: monospace;
+  font-size: 0.65rem;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: var(--color-text-muted);
+}
